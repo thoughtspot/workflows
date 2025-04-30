@@ -17,6 +17,20 @@ on:
         description: 'Public repository name (leave empty to auto-derive by removing "-private")'
         required: false
         type: string
+  workflow_call:
+    inputs:
+      force_sync:
+        description: 'Force sync all branches'
+        required: false
+        default: true
+        type: boolean
+      public_repo_name:
+        description: 'Public repository name (leave empty to auto-derive by removing "-private")'
+        required: false
+        type: string
+    secrets:
+      SSH_DEPLOY_KEY:
+        required: true
 
 jobs:
   check-private-repo:
