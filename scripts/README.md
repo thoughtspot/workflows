@@ -242,6 +242,8 @@ cd /path/to/your/repo
 git config --local commit.gpgsign false
 ```
 
+> **⚠️ IMPORTANT NOTE**: This instruction is **NOT RECOMMENDED**. Disabling commit signing will block your commits since signature verification is strictly enforced on our repositories. Only use this if you have been specifically instructed to do so by repository administrators and have an alternative signing method in place.
+
 ### Why isn't my commit showing as "Verified" on GitHub?
 
 If your commits aren't showing as verified:
