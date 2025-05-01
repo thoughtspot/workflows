@@ -15,14 +15,17 @@ show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
-    echo "  -h, --help     Display this help message and exit"
-    echo "  --org NAME     Specify GitHub organization name"
-    echo "  --repo NAME    Specify repository name (without -private suffix)"
-    echo "  --email EMAIL  Specify your email address for git config and SSH key"
-    echo "  --name NAME    Specify your full name for git config"
+    echo "  -h, --help             Display this help message and exit"
+    echo "  --org NAME             Specify GitHub organization name"
+    echo "  --repo NAME            Specify repository name (without -private suffix)"
+    echo "  --email EMAIL          Specify your email address for git config and SSH key"
+    echo "  --name NAME            Specify your full name for git config"
+    echo "  --use-existing-key     Use an existing SSH key instead of generating a new one"
+    echo "  --key-path PATH        Path to existing SSH key (requires --use-existing-key)"
     echo
     echo "Example:"
     echo "  $0 --org myorg --repo myrepo --email user@example.com --name \"John Doe\""
+    echo "  $0 --org myorg --repo myrepo --use-existing-key --key-path ~/.ssh/id_ed25519"
     echo
     exit 0
 }
@@ -32,6 +35,8 @@ ORG=""
 REPO=""
 EMAIL=""
 FULLNAME=""
+USE_EXISTING_KEY=false
+EXISTING_KEY_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -52,6 +57,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --name)
             FULLNAME="$2"
+            shift 2
+            ;;
+        --use-existing-key)
+            USE_EXISTING_KEY=true
+            shift
+            ;;
+        --key-path)
+            EXISTING_KEY_PATH="$2"
             shift 2
             ;;
         *)
@@ -93,50 +106,83 @@ SSH_KEY_PATH="$HOME/.ssh/id_ed25519"
 
 # Functions
 check_ssh_key() {
-    if [[ ! -f "$SSH_KEY_PATH" ]]; then
-        if [[ -f "$HOME/.ssh/id_rsa" ]]; then
-            log_info "Found RSA key instead of Ed25519 key."
-            SSH_KEY_PATH="$HOME/.ssh/id_rsa"
+    if [[ ! -f "$1" ]]; then
+        log_error "SSH key not found at: $1"
+        return 1
+    fi
+    
+    # Check if the file is a valid private key
+    if ! ssh-keygen -l -f "$1" &>/dev/null; then
+        log_error "The file at $1 is not a valid SSH private key."
+        return 1
+    fi
+    
+    # Check if corresponding public key exists
+    if [[ ! -f "${1}.pub" ]]; then
+        log_warn "Public key not found at: ${1}.pub"
+        read -p "Do you want to generate the public key from your private key? (y/n): " gen_pub_key
+        if [[ "$gen_pub_key" == "y" || "$gen_pub_key" == "Y" ]]; then
+            ssh-keygen -y -f "$1" > "${1}.pub"
+            if [ $? -ne 0 ]; then
+                log_error "Failed to generate public key. The private key might be protected with a passphrase."
+                return 1
+            fi
+            log_info "Public key generated at: ${1}.pub"
         else
+            log_error "Public key is required for GitHub authentication and commit signing."
             return 1
         fi
     fi
+    
     return 0
 }
 
 generate_ssh_key() {
     log_info "Generating a new SSH key..."
-    read -p "Enter your email address: " email
-    ssh-keygen -t ed25519 -C "$email"
+    
+    # Use email from command line or prompt
+    local email="$1"
+    if [[ -z "$email" ]]; then
+        read -p "Enter your email address: " email
+    fi
+    
+    local key_path="$2"
+    
+    # Generate the key
+    ssh-keygen -t ed25519 -C "$email" -f "$key_path"
 
     # Check if key was successfully generated
-    if [[ ! -f "$SSH_KEY_PATH" ]]; then
+    if [[ ! -f "$key_path" ]]; then
         log_error "Failed to generate SSH key. Please try manually."
-        exit 1
+        return 1
     fi
 
-    log_info "SSH key generated successfully."
+    log_info "SSH key generated successfully at: $key_path"
+    return 0
 }
 
 add_key_to_agent() {
+    local key_path="$1"
+    
     log_info "Adding SSH key to ssh-agent..."
 
     # Start ssh-agent if not already running
     eval "$(ssh-agent -s)"
 
     # Add the key
-    ssh-add "$SSH_KEY_PATH"
+    ssh-add "$key_path"
 
     if [ $? -ne 0 ]; then
         log_error "Failed to add key to ssh-agent. Please try manually."
-        exit 1
+        return 1
     fi
 
     log_info "SSH key added to agent successfully."
+    return 0
 }
 
 display_public_key() {
-    local public_key_path="${SSH_KEY_PATH}.pub"
+    local public_key_path="${1}.pub"
 
     log_info "Your public SSH key is:"
     echo "-------------------------------------"
@@ -146,6 +192,12 @@ display_public_key() {
     # Try to copy to clipboard
     if command -v pbcopy &> /dev/null; then
         cat "$public_key_path" | pbcopy
+        log_info "Public key copied to clipboard."
+    elif command -v xclip &> /dev/null; then
+        cat "$public_key_path" | xclip -selection clipboard
+        log_info "Public key copied to clipboard."
+    elif command -v clip &> /dev/null; then
+        cat "$public_key_path" | clip
         log_info "Public key copied to clipboard."
     else
         log_info "Please manually copy the key above."
@@ -241,11 +293,13 @@ update_remote_url() {
 }
 
 configure_git_signing() {
+    local key_path="$1"
+    
     log_info "Configuring Git for SSH commit signing..."
 
     # Configure SSH for signing
     git config --global gpg.format ssh
-    git config --global user.signingkey "$SSH_KEY_PATH"
+    git config --global user.signingkey "$key_path"
     git config --global commit.gpgsign true
 
     # Configure additional git settings for better experience
@@ -304,70 +358,97 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
     exit 1
 fi
 
-# Step 1: Always create a new SSH key for this migration
-log_info "Creating a new SSH key for repository migration..."
-
-# Use email from command line or prompt
+# Configure git user.email and user.name
 if [[ -z "$EMAIL" ]]; then
     read -p "Enter your email address: " EMAIL
 fi
-
-# Set up the user email in git config
-log_info "Setting up git config with your email..."
 git config --global user.email "$EMAIL"
 
-# Use full name from command line or prompt
 if [[ -z "$FULLNAME" ]]; then
     read -p "Enter your full name for git commits: " FULLNAME
 fi
 git config --global user.name "$FULLNAME"
 
-# Generate a new SSH key with a specific filename for this migration
-SSH_KEY_PATH="$HOME/.ssh/github_private_repo_$(date +%Y%m%d)"
-log_info "Generating new SSH key at: $SSH_KEY_PATH"
-ssh-keygen -t ed25519 -C "$EMAIL" -f "$SSH_KEY_PATH"
+log_info "Git user config set up with email: $EMAIL and name: $FULLNAME"
 
-# Check if key was successfully generated
-if [[ ! -f "$SSH_KEY_PATH" ]]; then
-    log_error "Failed to generate SSH key. Please try manually."
+# Handle SSH key setup
+if [ "$USE_EXISTING_KEY" = true ]; then
+    # Use existing key path from command line argument
+    if [[ -n "$EXISTING_KEY_PATH" ]]; then
+        SSH_KEY_PATH="$EXISTING_KEY_PATH"
+    else
+        # Prompt for existing key path
+        read -p "Do you want to use an existing SSH key? (y/n): " use_existing
+        if [[ "$use_existing" == "y" || "$use_existing" == "Y" ]]; then
+            read -p "Enter the full path to your existing SSH key: " SSH_KEY_PATH
+        else
+            # Generate new key if user changes their mind
+            USE_EXISTING_KEY=false
+        fi
+    fi
+
+    if [ "$USE_EXISTING_KEY" = true ]; then
+        # Validate the existing key
+        if ! check_ssh_key "$SSH_KEY_PATH"; then
+            log_error "The specified SSH key is invalid or doesn't exist."
+            exit 1
+        fi
+        log_info "Using existing SSH key at: $SSH_KEY_PATH"
+    fi
+else
+    # If not specified via command line, ask user interactively
+    read -p "Do you want to use an existing SSH key? (y/n): " use_existing
+    if [[ "$use_existing" == "y" || "$use_existing" == "Y" ]]; then
+        read -p "Enter the full path to your existing SSH key: " SSH_KEY_PATH
+        
+        # Validate the existing key
+        if ! check_ssh_key "$SSH_KEY_PATH"; then
+            log_error "The specified SSH key is invalid or doesn't exist."
+            exit 1
+        fi
+        log_info "Using existing SSH key at: $SSH_KEY_PATH"
+    else
+        # Generate a new SSH key
+        SSH_KEY_PATH="$HOME/.ssh/github_private_repo_$(date +%Y%m%d)"
+        log_info "Will generate new SSH key at: $SSH_KEY_PATH"
+        if ! generate_ssh_key "$EMAIL" "$SSH_KEY_PATH"; then
+            log_error "Failed to generate SSH key. Please try manually."
+            exit 1
+        fi
+    fi
+fi
+
+# Add key to ssh-agent
+if ! add_key_to_agent "$SSH_KEY_PATH"; then
+    log_error "Failed to add SSH key to ssh-agent. Please try manually."
     exit 1
 fi
 
-log_info "SSH key generated successfully."
-
-# Step 2: Add key to ssh-agent
-log_info "Ensuring SSH key is added to ssh-agent..."
-add_key_to_agent
-
-# Step 3: Display public key for GitHub
-log_info "Your SSH key is set up locally."
+# Ask if the key needs to be added to GitHub
 read -p "Do you need to add your SSH key to GitHub? (y/n): " add_to_github
-
 if [[ "$add_to_github" == "y" || "$add_to_github" == "Y" ]]; then
-    display_public_key
+    display_public_key "$SSH_KEY_PATH"
 fi
 
-# Step 4: Test GitHub connection
+# Test GitHub connection
 if ! test_github_connection; then
     log_error "Failed to connect to GitHub. Please check your SSH configuration."
     exit 1
 fi
 
-# This check was moved to the beginning of the script
-
-# Step 6: Update remote URL
+# Update remote URL
 if ! update_remote_url; then
     log_error "Failed to update remote URL. Please update manually."
     exit 1
 fi
 
-# Step 7: Configure Git for SSH signing
-if ! configure_git_signing; then
+# Configure Git for SSH signing
+if ! configure_git_signing "$SSH_KEY_PATH"; then
     log_error "Failed to configure Git for SSH signing. Please configure manually."
     exit 1
 fi
 
-# Step 8: Sync with remote repository
+# Sync with remote repository
 if ! sync_with_remote; then
     log_warn "Failed to sync with remote repository. Please check your repository access."
 fi
