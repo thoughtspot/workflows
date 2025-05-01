@@ -23,7 +23,7 @@ This script automates several important steps when transitioning from a public G
 
 1. Download the script:
    ```bash
-   curl -O https://raw.githubusercontent.com/yourusername/repo-migration/main/migration-helper.sh
+   curl -O https://raw.githubusercontent.com/thoughtspot/workflows/refs/heads/main/scripts/migration-helper.sh
    ```
 
 2. Make the script executable:
