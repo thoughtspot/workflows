@@ -23,12 +23,12 @@ This script automates several important steps when transitioning from a public G
 
 1. Download the script:
    ```bash
-   curl -O https://raw.githubusercontent.com/yourusername/repo-migration/main/repo_migration.sh
+   curl -O https://raw.githubusercontent.com/yourusername/repo-migration/main/migration-helper.sh
    ```
 
 2. Make the script executable:
    ```bash
-   chmod +x repo_migration.sh
+   chmod +x migration_helper.sh
    ```
 
 ## Usage
@@ -38,7 +38,7 @@ This script automates several important steps when transitioning from a public G
 Run the script within your git repository:
 
 ```bash
-./repo_migration.sh
+./migration_helper.sh
 ```
 
 The script will guide you through an interactive process with prompts for all required information.
@@ -48,7 +48,7 @@ The script will guide you through an interactive process with prompts for all re
 For automated or scripted use, you can provide parameters through command line arguments:
 
 ```bash
-./repo_migration.sh --org "your-org" --repo "your-repo" --email "your-email@example.com" --name "Your Name"
+./migration_helper.sh --org "your-org" --repo "your-repo" --email "your-email@example.com" --name "Your Name"
 ```
 
 ### Available Options
@@ -69,13 +69,13 @@ The script offers two options for SSH key management:
 
 1. **Use an existing key**: If you already have an SSH key set up, you can use it with the script:
    ```bash
-   ./repo_migration.sh --use-existing-key --key-path ~/.ssh/your_existing_key
+   ./migration_helper.sh --use-existing-key --key-path ~/.ssh/your_existing_key
    ```
 
 2. **Generate a new key**: The script can generate a new Ed25519 SSH key:
    ```bash
    # The script will generate a key at ~/.ssh/github_private_repo_YYYYMMDD
-   ./repo_migration.sh
+   ./migration_helper.sh
    ```
 
 When running interactively, the script will prompt you to choose between these options.
@@ -142,7 +142,7 @@ The script provides colored log output to help identify information, warnings, a
 For CI/CD pipelines, use the non-interactive mode with all required parameters:
 
 ```bash
-./repo_migration.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --use-existing-key --key-path /path/to/ci/ssh_key
+./migration_helper.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --use-existing-key --key-path /path/to/ci/ssh_key
 ```
 
 ### Custom Editor Configuration
