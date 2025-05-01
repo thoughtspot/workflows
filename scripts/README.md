@@ -28,7 +28,7 @@ This script automates several important steps when transitioning from a public G
 
 2. Make the script executable:
    ```bash
-   chmod +x migration_helper.sh
+   chmod +x migration-helper.sh
    ```
 
 ## Usage
@@ -38,7 +38,7 @@ This script automates several important steps when transitioning from a public G
 Run the script within your git repository:
 
 ```bash
-./migration_helper.sh
+./migration-helper.sh
 ```
 
 The script will guide you through an interactive process with prompts for all required information.
@@ -48,7 +48,7 @@ The script will guide you through an interactive process with prompts for all re
 For automated or scripted use, you can provide parameters through command line arguments:
 
 ```bash
-./migration_helper.sh --org "your-org" --repo "your-repo" --email "your-email@example.com" --name "Your Name"
+./migration-helper.sh --org "your-org" --repo "your-repo" --email "your-email@example.com" --name "Your Name"
 ```
 
 ### Available Options
@@ -69,13 +69,13 @@ The script offers two options for SSH key management:
 
 1. **Use an existing key**: If you already have an SSH key set up, you can use it with the script:
    ```bash
-   ./migration_helper.sh --use-existing-key --key-path ~/.ssh/your_existing_key
+   ./migration-helper.sh --use-existing-key --key-path ~/.ssh/your_existing_key
    ```
 
 2. **Generate a new key**: The script can generate a new Ed25519 SSH key:
    ```bash
    # The script will generate a key at ~/.ssh/github_private_repo_YYYYMMDD
-   ./migration_helper.sh
+   ./migration-helper.sh
    ```
 
 When running interactively, the script will prompt you to choose between these options.
@@ -142,7 +142,7 @@ The script provides colored log output to help identify information, warnings, a
 For CI/CD pipelines, use the non-interactive mode with all required parameters:
 
 ```bash
-./migration_helper.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --use-existing-key --key-path /path/to/ci/ssh_key
+./migration-helper.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --use-existing-key --key-path /path/to/ci/ssh_key
 ```
 
 ### Custom Editor Configuration
@@ -160,6 +160,96 @@ git config --global core.editor "your-preferred-editor"
 - All SSH keys are protected with standard file permissions
 - Consider using a passphrase when generating new keys for additional security
 - The script adds SSH keys to your ssh-agent for convenience, but these are cleared when you log out
+
+## FAQ
+
+### How do I set up commit signing if I already have SSH configured for my repository?
+
+If you already have SSH authentication working with GitHub but want to enable commit signing:
+
+1. **Identify your existing SSH key**:
+   ```bash
+   # List your SSH keys
+   ls -la ~/.ssh/
+   ```
+   Look for files like `id_ed25519`, `id_rsa`, or similar (without the .pub extension).
+
+2. **Configure Git to use SSH for signing**:
+   ```bash
+   # Set the signing format to SSH
+   git config --global gpg.format ssh
+   
+   # Configure your existing key for signing
+   git config --global user.signingkey ~/.ssh/your_existing_key
+   
+   # Enable commit signing by default
+   git config --global commit.gpgsign true
+   ```
+
+3. **Add your key to GitHub for signing**:
+   - Go to GitHub: Settings → SSH and GPG keys
+   - Click on your existing SSH key
+   - Check the "Enable signing with this key" option
+   - Save changes
+
+4. **Test commit signing**:
+   ```bash
+   # Make a test commit
+   git commit --allow-empty -m "Test signed commit"
+   
+   # Push to GitHub
+   git push
+   ```
+
+5. **Verify signature on GitHub**:
+   - Go to your repository on GitHub
+   - Look at your recent commits
+   - You should see a "Verified" badge next to your commit
+
+### Can I use different SSH keys for authentication and signing?
+
+Yes, you can configure Git to use separate SSH keys:
+
+```bash
+# Configure authentication key in ~/.ssh/config
+Host github.com
+    IdentityFile ~/.ssh/github_auth_key
+
+# Configure signing key in Git
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/github_signing_key
+```
+
+### How do I sign a single commit without enabling global signing?
+
+To sign an individual commit without enabling global signing:
+
+```bash
+git commit -S -m "Your commit message"
+```
+
+The `-S` flag indicates that this commit should be signed.
+
+### How do I disable commit signing for a specific repository?
+
+To disable commit signing for a specific repository:
+
+```bash
+# Navigate to your repository
+cd /path/to/your/repo
+
+# Disable commit signing for this repository only
+git config --local commit.gpgsign false
+```
+
+### Why isn't my commit showing as "Verified" on GitHub?
+
+If your commits aren't showing as verified:
+
+1. Ensure your SSH key is added to GitHub with signing enabled
+2. Check that your Git configuration is using the correct key path
+3. Confirm you're using the same email in your Git config as on GitHub
+4. Verify the SSH key exists at the specified path and has correct permissions
 
 ## Contributing
 
