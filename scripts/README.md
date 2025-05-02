@@ -1,12 +1,12 @@
 # Repository Migration Script
 
-A robust bash script to streamline the process of migrating GitHub repositories from public to private, while also configuring SSH-based commit signing.
+A robust bash script to streamline the process of migrating GitHub repositories from public to private, while also configuring SSH-based authentication and commit signing.
 
 ## Overview
 
 This script automates several important steps when transitioning from a public GitHub repository to a private one:
 
-1. SSH key management (use existing or generate new)
+1. SSH key management for both authentication and signing (use existing or generate new)
 2. GitHub SSH authentication setup
 3. Git remote URL updates
 4. SSH-based commit signing configuration
@@ -41,7 +41,7 @@ Run the script within your git repository:
 ./migration-helper.sh
 ```
 
-The script will guide you through an interactive process with prompts for all required information.
+The script will guide you through an interactive process with prompts for all required information, including whether you want to set up authentication keys, signing keys, or both.
 
 ### Command Line Arguments
 
@@ -60,25 +60,66 @@ For automated or scripted use, you can provide parameters through command line a
 | `--repo NAME` | Specify repository name (without -private suffix) |
 | `--email EMAIL` | Specify your email address for git config and SSH key |
 | `--name NAME` | Specify your full name for git config |
-| `--use-existing-key` | Use an existing SSH key instead of generating a new one |
-| `--key-path PATH` | Path to existing SSH key (requires --use-existing-key) |
+| `--auth-key` | Configure key for authentication only |
+| `--signing-key` | Configure key for signing only |
+| `--both-keys` | Configure keys for both authentication and signing (default) |
+| `--use-existing-key` | Use existing SSH key(s) instead of generating new ones |
+| `--auth-key-path PATH` | Path to existing authentication SSH key |
+| `--signing-key-path PATH` | Path to existing signing SSH key |
 
 ### SSH Key Management
 
-The script offers two options for SSH key management:
+The script offers two key setup options with three configurations:
 
-1. **Use an existing key**: If you already have an SSH key set up, you can use it with the script:
+1. **Key Purpose**:
+   * Authentication only: Use SSH key only for connecting to GitHub
+   * Signing only: Use SSH key only for signing commits
+   * Both (default): Set up keys for both authentication and signing
+
+2. **Key Source**:
+   * Use existing key(s): If you already have SSH keys set up
    ```bash
-   ./migration-helper.sh --use-existing-key --key-path ~/.ssh/your_existing_key
+   ./migration-helper.sh --use-existing-key --auth-key-path ~/.ssh/your_auth_key --signing-key-path ~/.ssh/your_signing_key
    ```
-
-2. **Generate a new key**: The script can generate a new Ed25519 SSH key:
+   
+   * Generate new key(s): The script can generate new Ed25519 SSH keys
    ```bash
-   # The script will generate a key at ~/.ssh/github_private_repo_YYYYMMDD
-   ./migration-helper.sh
+   # Generate keys for both authentication and signing
+   ./migration-helper.sh --both-keys
+
+   # Generate key for authentication only
+   ./migration-helper.sh --auth-key
+   
+   # Generate key for signing only
+   ./migration-helper.sh --signing-key
    ```
 
 When running interactively, the script will prompt you to choose between these options.
+
+## Setting Up SSH Signing Keys in GitHub
+
+After generating or selecting your SSH signing key, you need to configure it in GitHub:
+
+1. **Copy your public signing key**:
+   The script will display your public signing key and attempt to copy it to your clipboard.
+
+2. **Add the key to GitHub**:
+   - Go to GitHub: [Settings → SSH and GPG keys](https://github.com/settings/keys)
+   - Click "New SSH key"
+   - Provide a descriptive title (e.g., "Commit Signing Key")
+   - Paste your public key
+   - **Important**: Select "Signing Key" from the dropdown menu
+   - Click "Add SSH key"
+
+   ![SSH Signing Key Selection](https://docs.github.com/assets/images/help/settings/ssh-signing-key-dropdown.png)
+
+3. **Verify setup**:
+   - After adding the key and running the script, make a test commit:
+   ```bash
+   git commit --allow-empty -m "Test signed commit"
+   git push
+   ```
+   - Check on GitHub that your commit shows the "Verified" badge
 
 ## How It Works
 
@@ -87,20 +128,23 @@ When running interactively, the script will prompt you to choose between these o
 1. **Initialization**:
    - Validates that the current directory is a git repository
    - Sets up git user configuration (email and name)
+   - Determines which type of keys to set up (authentication, signing, or both)
 
 2. **SSH Key Setup**:
-   - Option to use an existing SSH key or generate a new one
-   - Validates that the key exists and is properly formatted
-   - Generates a public key if only a private key is present
+   - Option to use existing SSH key(s) or generate new one(s)
+   - Validates that the key(s) exist and are properly formatted
+   - Generates public key(s) if only private key(s) are present
+   - Sets up separate keys for authentication and signing if requested
 
 3. **GitHub Integration**:
-   - Adds the SSH key to the ssh-agent
-   - Displays the public key for adding to GitHub (with clipboard support)
-   - Tests the GitHub connection
+   - Adds the SSH key(s) to the ssh-agent
+   - Displays the public key(s) for adding to GitHub (with clipboard support)
+   - Tests the GitHub connection for authentication key
+   - Provides specific instructions for adding signing key with proper GitHub settings
 
 4. **Repository Configuration**:
    - Updates the remote URL to point to the new private repository
-   - Configures git for SSH-based commit signing
+   - Configures git for SSH-based commit signing with the specified signing key
    - Syncs with the remote repository (optional rebase)
 
 5. **Completion**:
@@ -128,6 +172,11 @@ The script assumes that your private repository will follow the naming conventio
    - Check that the key file has appropriate permissions (typically 600)
    - Verify the key is in the correct format
 
+4. **Commit Signing Issues**:
+   - Ensure your signing key is correctly added to GitHub with the "Signing Key" checkbox checked
+   - Verify that your signing key is correctly configured in Git
+   - Check that the public key is being used for signing in your Git config
+
 ### Logs
 
 The script provides colored log output to help identify information, warnings, and errors:
@@ -142,7 +191,7 @@ The script provides colored log output to help identify information, warnings, a
 For CI/CD pipelines, use the non-interactive mode with all required parameters:
 
 ```bash
-./migration-helper.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --use-existing-key --key-path /path/to/ci/ssh_key
+./migration-helper.sh --org "your-org" --repo "your-repo" --email "ci-bot@example.com" --name "CI Bot" --auth-key --use-existing-key --auth-key-path /path/to/ci/ssh_key
 ```
 
 ### Custom Editor Configuration
@@ -160,37 +209,42 @@ git config --global core.editor "your-preferred-editor"
 - All SSH keys are protected with standard file permissions
 - Consider using a passphrase when generating new keys for additional security
 - The script adds SSH keys to your ssh-agent for convenience, but these are cleared when you log out
+- Using separate keys for authentication and signing provides better security isolation
 
 ## FAQ
+
+### What's the difference between authentication and signing keys?
+
+**Authentication keys** are used to securely connect to GitHub when you push, pull, or perform other operations that require remote access. **Signing keys** are used to cryptographically sign your commits, allowing others to verify that commits were actually made by you. While you can use the same key for both purposes, using separate keys provides better security isolation.
 
 ### How do I set up commit signing if I already have SSH configured for my repository?
 
 If you already have SSH authentication working with GitHub but want to enable commit signing:
 
-1. **Identify your existing SSH key**:
+1. **Generate a dedicated signing key** (recommended):
    ```bash
-   # List your SSH keys
-   ls -la ~/.ssh/
+   ssh-keygen -t ed25519 -C "github-signing-key" -f ~/.ssh/github_signing_key
    ```
-   Look for files like `id_ed25519`, `id_rsa`, or similar (without the .pub extension).
 
-2. **Configure Git to use SSH for signing**:
+2. **Add your signing key to GitHub**:
+   - Go to GitHub: Settings → SSH and GPG keys
+   - Click "New SSH key"
+   - Give it a title like "GitHub Commit Signing Key"
+   - Paste your public key (~/.ssh/github_signing_key.pub)
+   - **Select "Signing Key" from the key type dropdown menu**
+   - Save changes
+
+3. **Configure Git to use SSH for signing**:
    ```bash
    # Set the signing format to SSH
    git config --global gpg.format ssh
    
-   # Configure your existing key for signing
-   git config --global user.signingkey ~/.ssh/your_existing_key
+   # Configure your signing key (note: use the public key)
+   git config --global user.signingkey ~/.ssh/github_signing_key.pub
    
    # Enable commit signing by default
    git config --global commit.gpgsign true
    ```
-
-3. **Add your key to GitHub for signing**:
-   - Go to GitHub: Settings → SSH and GPG keys
-   - Click on your existing SSH key
-   - Check the "Enable signing with this key" option
-   - Save changes
 
 4. **Test commit signing**:
    ```bash
@@ -208,7 +262,7 @@ If you already have SSH authentication working with GitHub but want to enable co
 
 ### Can I use different SSH keys for authentication and signing?
 
-Yes, you can configure Git to use separate SSH keys:
+Yes, and the updated script supports this workflow explicitly with the `--auth-key` and `--signing-key` options. Using separate keys is recommended for better security isolation:
 
 ```bash
 # Configure authentication key in ~/.ssh/config
@@ -217,7 +271,7 @@ Host github.com
 
 # Configure signing key in Git
 git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/github_signing_key
+git config --global user.signingkey ~/.ssh/github_signing_key.pub
 ```
 
 ### How do I sign a single commit without enabling global signing?
@@ -248,10 +302,11 @@ git config --local commit.gpgsign false
 
 If your commits aren't showing as verified:
 
-1. Ensure your SSH key is added to GitHub with signing enabled
-2. Check that your Git configuration is using the correct key path
-3. Confirm you're using the same email in your Git config as on GitHub
-4. Verify the SSH key exists at the specified path and has correct permissions
+1. Ensure your SSH key is added to GitHub with "Signing Key" selected in the key type dropdown
+2. Confirm you're using the correct public key path in your Git config
+3. Verify you're using the same email in your Git config as on GitHub
+4. Check that Git is configured to use SSH for signing with `gpg.format ssh`
+5. Make sure the key exists at the specified path and has correct permissions
 
 ## Contributing
 
