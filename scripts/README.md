@@ -105,13 +105,15 @@ After generating or selecting your SSH signing key, you need to configure it in 
 
 2. **Add the key to GitHub**:
    - Go to GitHub: [Settings → SSH and GPG keys](https://github.com/settings/keys)
+
+     https://github.com/user-attachments/assets/a3e39052-37d0-4ceb-a20f-2a91e6a27b24
+
    - Click "New SSH key"
    - Provide a descriptive title (e.g., "Commit Signing Key")
    - Paste your public key
    - **Important**: Select "Signing Key" from the dropdown menu
    - Click "Add SSH key"
-
-   ![SSH Signing Key Selection](https://docs.github.com/assets/images/help/settings/ssh-signing-key-dropdown.png)
+   
 
 3. **Verify setup**:
    - After adding the key and running the script, make a test commit:
