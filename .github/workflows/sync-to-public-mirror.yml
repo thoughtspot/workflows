@@ -8,7 +8,7 @@ on:
       force_sync:
         description: 'Force sync all branches'
         required: false
-        default: 'true'
+        default: true
         type: boolean
       public_repo_name:
         description: 'Public repository name (leave empty to auto-derive by removing "-private")'
