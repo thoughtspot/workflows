@@ -18,17 +18,19 @@ on:
 jobs:
   deploy-to-all-branches:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Explicitly request write permission for repository contents
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ github.token }}  # Use the built-in GITHUB_TOKEN
 
       - name: Set up Git identity
         run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "action-bot@github.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "github-actions@github.com"
 
       - name: Decode workflow content
         run: |
