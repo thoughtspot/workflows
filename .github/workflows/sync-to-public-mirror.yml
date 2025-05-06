@@ -2,7 +2,9 @@ name: Sync to Public Mirror
 
 on:
   pull_request:
-    types: [closed]  # Trigger when PRs are merged or closed
+    types: [closed]
+    branches:
+      - '**'
   workflow_dispatch:
     inputs:
       force_sync:
