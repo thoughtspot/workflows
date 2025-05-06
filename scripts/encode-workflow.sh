@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Path to your workflow file
+WORKFLOW_FILE="sync-to-public-mirror.yml"
+
+# Create the workflow content
+cat > "$WORKFLOW_FILE" << 'EOF'
+name: Sync Repository to Public Mirror
+
+on:
+  pull_request:
+    types: [closed]
+    # No branches filter means it will trigger for ALL branches
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync all branches'
+        required: false
+        default: 'true'
+        type: boolean
+      public_repo_name:
+        description: 'Public repository name (leave empty to auto-derive by removing "-private")'
+        required: false
+        type: string
+
+jobs:
+  call-sync-workflow:
+    # Only run this job when the PR was merged, not just closed
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    uses: thoughtspot/workflows/.github/workflows/sync-to-public-mirror.yml@c19c7b395533a67a484bb86bd497aa71ed279a07
+    with:
+      force_sync: ${{ github.event.inputs.force_sync == 'true' }}
+      public_repo_name: ${{ github.event.inputs.public_repo_name || '' }}
+    secrets:
+      SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+EOF
+
+# Base64 encode the workflow file content
+ENCODED_CONTENT=$(base64 -w 0 "$WORKFLOW_FILE")
+
+echo "Encoded workflow content:"
+echo "$ENCODED_CONTENT"
+echo
+echo "You can now use this encoded content as input to the deploy-workflow-to-all-branches.yml workflow."
