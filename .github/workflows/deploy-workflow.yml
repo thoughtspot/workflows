@@ -1,0 +1,98 @@
+name: Deploy Workflow to All Branches
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_path:
+        description: 'Path to the workflow file to deploy (relative to .github/workflows/)'
+        required: true
+        default: 'sync-to-public-mirror.yml'
+      workflow_content:
+        description: 'Content of the workflow file (base64 encoded)'
+        required: true
+      skip_branches:
+        description: 'Comma-separated list of branches to skip (optional)'
+        required: false
+        default: ''
+
+jobs:
+  deploy-to-all-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Set up Git identity
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "action-bot@github.com"
+
+      - name: Decode workflow content
+        run: |
+          echo "${{ github.event.inputs.workflow_content }}" | base64 -d > workflow_content.yml
+          mkdir -p .github/workflows
+          
+      - name: Get all branches
+        id: get-branches
+        run: |
+          # Get list of all branches except HEAD and remove refs/heads/ prefix
+          ALL_BRANCHES=$(git branch -r | grep -v HEAD | sed 's/origin\///')
+          echo "All branches found: $ALL_BRANCHES"
+          echo "branches=$ALL_BRANCHES" >> $GITHUB_OUTPUT
+
+      - name: Deploy workflow to all branches
+        run: |
+          WORKFLOW_PATH=".github/workflows/${{ github.event.inputs.workflow_path }}"
+          SKIP_BRANCHES="${{ github.event.inputs.skip_branches }}"
+          IFS=',' read -ra SKIP_ARRAY <<< "$SKIP_BRANCHES"
+          
+          CURRENT_BRANCH=$(git branch --show-current)
+          echo "Current branch: $CURRENT_BRANCH"
+          
+          BRANCHES=${{ steps.get-branches.outputs.branches }}
+          
+          for branch in $BRANCHES; do
+            # Check if branch is in skip list
+            SKIP=false
+            for skip_branch in "${SKIP_ARRAY[@]}"; do
+              if [ "$branch" = "$skip_branch" ]; then
+                SKIP=true
+                echo "Skipping branch: $branch (in skip list)"
+                break
+              fi
+            done
+            
+            if [ "$SKIP" = true ]; then
+              continue
+            fi
+            
+            echo "Processing branch: $branch"
+            
+            # Checkout branch
+            git checkout $branch || { echo "Failed to checkout $branch, skipping"; continue; }
+            
+            # Check if workflow file already exists
+            if [ -f "$WORKFLOW_PATH" ]; then
+              echo "Workflow file already exists in $branch. Skipping."
+              continue
+            fi
+            
+            # Create directory structure if it doesn't exist
+            mkdir -p "$(dirname "$WORKFLOW_PATH")"
+            
+            # Copy workflow file
+            cp workflow_content.yml "$WORKFLOW_PATH"
+            
+            # Commit and push changes
+            git add "$WORKFLOW_PATH"
+            git commit -m "Add workflow file to branch $branch" || echo "No changes to commit for $branch"
+            git push origin $branch || echo "Failed to push changes to $branch"
+            
+            echo "Successfully deployed workflow to $branch"
+          done
+          
+          # Return to original branch
+          git checkout $CURRENT_BRANCH
