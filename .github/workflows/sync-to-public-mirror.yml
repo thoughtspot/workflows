@@ -5,6 +5,9 @@ on:
     types: [closed]
     branches:
       - '**'
+  push:
+    branches:
+      - '**'  # Added push event to handle direct commits
   workflow_dispatch:
     inputs:
       force_sync:
@@ -56,6 +59,9 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.public_repo_name }}" ]]; then
             # Use the provided name from manual input
             PUBLIC_REPO="${{ github.event.inputs.public_repo_name }}"
+          elif [[ "${{ github.event_name }}" == "workflow_call" && -n "${{ inputs.public_repo_name }}" ]]; then
+            # Use the provided name from workflow call
+            PUBLIC_REPO="${{ inputs.public_repo_name }}"
           else
             # Auto-derive by removing "-private" suffix
             PUBLIC_REPO="${PRIVATE_REPO//-private/}"
@@ -80,7 +86,8 @@ jobs:
 
   sync-to-public:
     needs: check-private-repo
-    if: (github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch') && needs.check-private-repo.outputs.is_private == 'true'
+    # Update the condition to include push events
+    if: (github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'workflow_call') && needs.check-private-repo.outputs.is_private == 'true'
     runs-on: ubuntu-latest
     
     steps:
