@@ -5,9 +5,11 @@ on:
     types: [closed]
     branches:
       - '**'
+      - '*'
   push:
     branches:
       - '**'  # Added push event to handle direct commits
+      - '*'
   workflow_dispatch:
     inputs:
       force_sync:

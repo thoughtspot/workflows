@@ -46,6 +46,7 @@ jobs:
           
           # Disable signing by default - we'll use GitHub's verified commits instead
           git config --global commit.gpgsign false
+
       - name: Decode workflow content
         run: |
           echo "${{ github.event.inputs.workflow_content }}" | base64 -d > workflow_content.yml
@@ -57,6 +58,7 @@ jobs:
           git branch -r | grep -v HEAD | sed 's/origin\///' > all_branches.txt
           echo "All branches found:"
           cat all_branches.txt
+
       - name: Deploy workflow to all branches
         run: |
           WORKFLOW_PATH=".github/workflows/${{ github.event.inputs.workflow_path }}"
