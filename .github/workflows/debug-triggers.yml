@@ -1,0 +1,111 @@
+name: Debug PR and Push Triggers
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - '*'             # Match any branch without slashes
+      - '**'            # Match any branch with slashes
+      - '[0-9]*.[0-9]*.[0-9]*.*'  # Explicitly match version number patterns like 10.8.0.cl
+  push:
+    branches:
+      - '*'             # Match any branch without slashes 
+      - '**'            # Match any branch with slashes
+      - '[0-9]*.[0-9]*.[0-9]*.*'  # Explicitly match version number patterns like 10.8.0.cl
+  workflow_dispatch:
+    inputs:
+      test_branch:
+        description: 'Test branch name (for debugging)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  debug-event-info:
+    runs-on: ubuntu-latest
+    # Always run this job regardless of conditions
+    if: always()
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Debug Trigger Event
+        run: |
+          echo "===================== EVENT DETAILS ====================="
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
+          echo "Triggered ref: ${{ github.ref }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository name: ${{ github.repository.name || github.event.repository.name }}"
+          
+          # More detailed info based on event type
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo ""
+            echo "===================== PR DETAILS ====================="
+            echo "PR Number: ${{ github.event.pull_request.number }}"
+            echo "PR Title: ${{ github.event.pull_request.title }}"
+            echo "PR Base Ref: ${{ github.event.pull_request.base.ref }}"
+            echo "PR Head Ref: ${{ github.event.pull_request.head.ref }}"
+            echo "PR State: ${{ github.event.pull_request.state }}"
+            echo "PR Merged: ${{ github.event.pull_request.merged }}"
+            echo "Would workflow run?: ${{ github.event.pull_request.merged == true }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            echo ""
+            echo "===================== PUSH DETAILS ====================="
+            echo "Pushed branch ref: ${{ github.ref }}"
+            echo "Clean branch name: ${GITHUB_REF#refs/heads/}"
+            echo "Pusher: ${{ github.event.pusher.name }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Compare URL: ${{ github.event.compare }}"
+          fi
+          
+          echo ""
+          echo "===================== REPOSITORY CHECK ====================="
+          echo "Repo name contains '-private': ${{ contains(github.repository, '-private') }}"
+          echo "Would sync job run? (PR): ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true && contains(github.repository, '-private') }}"
+          echo "Would sync job run? (Push): ${{ github.event_name == 'push' && contains(github.repository, '-private') }}"
+          echo "Would sync job run? (Manual): ${{ github.event_name == 'workflow_dispatch' && contains(github.repository, '-private') }}"
+          
+          echo ""
+          echo "===================== ENVIRONMENT ====================="
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Workflow: ${{ github.workflow }}"
+          echo "GitHub Run ID: ${{ github.run_id }}"
+          echo "GitHub Context (truncated):"
+          echo "${{ toJSON(github) }}" | head -c 1000
+          
+          echo ""
+          echo "===================== EVENT CONTEXT ====================="
+          echo "Event Context (truncated):"
+          echo "${{ toJSON(github.event) }}" | head -c 1000
+
+      - name: Print Full Repository Name
+        run: |
+          echo "Full repository name: ${GITHUB_REPOSITORY}"
+          echo "Would this pass the private repo check? $(echo ${GITHUB_REPOSITORY} | grep -q '-private' && echo 'YES' || echo 'NO')"
+          
+      - name: Print Full Branch Name
+        run: |
+          # Display the full branch name to check pattern matching
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH_NAME="${{ github.event.pull_request.base.ref }}"
+          fi
+          echo "Branch name to match: ${BRANCH_NAME}"
+          
+          # Test branch pattern matching directly
+          if [[ "${BRANCH_NAME}" == *"."*"."*"."* ]]; then
+            echo "Branch matches version pattern (contains multiple dots)"
+          else
+            echo "Branch does not match version pattern"
+          fi
+          
+          # Test against the patterns we're using
+          [[ "${BRANCH_NAME}" == * ]] && echo "Matches '*' pattern" || echo "Does NOT match '*' pattern"
+          
+          # Use glob matching to simulate GitHub Actions behavior
+          shopt -s globstar
+          # This doesn't work perfectly on command line, but gives some insight
+          [[ "${BRANCH_NAME}" == ** ]] && echo "Matches '**' pattern" || echo "Does NOT match '**' pattern"
