@@ -1,24 +1,6 @@
 name: Sync to Public Mirror
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - '**'
-  push:
-    branches:
-      - '**'  # Matches all branches
-  workflow_dispatch:
-    inputs:
-      force_sync:
-        description: 'Force sync all branches'
-        required: false
-        default: true
-        type: boolean
-      public_repo_name:
-        description: 'Public repository name (required)'
-        required: true
-        type: string
   workflow_call:
     inputs:
       force_sync:
@@ -27,68 +9,48 @@ on:
         default: true
         type: boolean
       public_repo_name:
-        description: 'Public repository name (required)'
-        required: true
+        description: 'Public repository name'
+        required: false
         type: string
     secrets:
       SSH_DEPLOY_KEY:
         required: true
 
 jobs:
-  determine-repositories:
+  sync:
     runs-on: ubuntu-latest
-    outputs:
-      private_repo: ${{ steps.repo-names.outputs.private_repo }}
-      public_repo: ${{ steps.repo-names.outputs.public_repo }}
-      org: ${{ steps.repo-names.outputs.org }}
-    
     steps:
-      - name: Determine repository names
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Get all branches
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Determine Repository Names
         id: repo-names
         run: |
           # Get the current repository name
           PRIVATE_REPO=$(echo $GITHUB_REPOSITORY | cut -d '/' -f 2)
           echo "private_repo=$PRIVATE_REPO" >> $GITHUB_OUTPUT
           
-          # Get organization/username
+          # Get organization name
           ORG=$(echo $GITHUB_REPOSITORY | cut -d '/' -f 1)
           echo "org=$ORG" >> $GITHUB_OUTPUT
           
-          # Determine public repository name
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.public_repo_name }}" ]]; then
-            # Use the provided name from manual input
-            PUBLIC_REPO="${{ github.event.inputs.public_repo_name }}"
-          elif [[ "${{ github.event_name }}" == "workflow_call" && -n "${{ inputs.public_repo_name }}" ]]; then
-            # Use the provided name from workflow call
+          # Get public repository name
+          if [[ -n "${{ inputs.public_repo_name }}" ]]; then
+            # Use provided name
             PUBLIC_REPO="${{ inputs.public_repo_name }}"
           else
-            # Auto-derive by removing "-private" suffix if present, otherwise use repo name
+            # Remove "-private" suffix if present
             PUBLIC_REPO="${PRIVATE_REPO//-private/}"
-            
-            # If the transformation did nothing (no -private in name), append "-public"
-            if [[ "$PUBLIC_REPO" == "$PRIVATE_REPO" ]]; then
-              PUBLIC_REPO="${PRIVATE_REPO}-public"
-            fi
           fi
           echo "public_repo=$PUBLIC_REPO" >> $GITHUB_OUTPUT
           
           echo "Source repository: $PRIVATE_REPO"
           echo "Target repository: $PUBLIC_REPO"
           echo "Organization: $ORG"
-
-  sync-to-public:
-    needs: determine-repositories
-    # Run for any event type that triggered the workflow
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'workflow_call'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Check out source repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # We need all branches
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
+      
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
@@ -110,6 +72,7 @@ jobs:
           # Get all branches and remove the refs/heads/ prefix
           BRANCHES=$(git branch -r | grep -v '\->' | sed 's/origin\///g' | tr '\n' ' ')
           echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
+          echo "Found branches: $BRANCHES"
 
       - name: Create workspace for public mirror
         run: |
@@ -124,11 +87,11 @@ jobs:
           git config user.email "action@github.com"
           
           # Set up remote for the public mirror using SSH
-          git remote add public git@github.com:${{ needs.determine-repositories.outputs.org }}/${{ needs.determine-repositories.outputs.public_repo }}.git
+          git remote add public git@github.com:${{ steps.repo-names.outputs.org }}/${{ steps.repo-names.outputs.public_repo }}.git
           
           # Check if public repo exists by attempting to connect to it
           if ! git ls-remote public HEAD &>/dev/null; then
-            echo "Public repository doesn't exist or can't be accessed: ${{ needs.determine-repositories.outputs.org }}/${{ needs.determine-repositories.outputs.public_repo }}"
+            echo "::error::Public repository doesn't exist or can't be accessed: ${{ steps.repo-names.outputs.org }}/${{ steps.repo-names.outputs.public_repo }}"
             echo "Ensure the repository exists and the SSH key has appropriate access."
             exit 1
           fi
@@ -140,6 +103,8 @@ jobs:
         run: |
           BRANCHES="${{ steps.get-branches.outputs.branches }}"
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          
+          echo "Processing branches: $BRANCHES"
           
           # Process each branch
           for branch in $BRANCHES; do
@@ -160,8 +125,7 @@ jobs:
             cd ~/public-mirror
             
             # Try to checkout the branch if it exists in public mirror
-            # Use '--' to disambiguate between files and branch names
-            git checkout "$branch" -- 2>/dev/null || git checkout -b "$branch" --
+            git checkout "$branch" 2>/dev/null || git checkout -b "$branch"
             
             # Remove all content except .git directory
             find . -mindepth 1 -not -path "./.git*" -delete
@@ -179,7 +143,7 @@ jobs:
           done
           
           # Return to the original branch
-          git checkout "$CURRENT_BRANCH" --
+          git checkout "$CURRENT_BRANCH" || true
 
       - name: Push all branches to public mirror
         run: |
@@ -188,7 +152,7 @@ jobs:
           
           # Push all branches to public mirror
           for branch in $BRANCHES; do
-            # Use '--' to disambiguate between files and branch names
-            git checkout "$branch" --
+            echo "Pushing branch: $branch"
+            git checkout "$branch" || git checkout -b "$branch"
             git push -u public "$branch"
           done
