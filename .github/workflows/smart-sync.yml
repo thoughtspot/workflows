@@ -1,0 +1,133 @@
+name: Sync to Public Mirror
+
+on:
+  workflow_call:
+    inputs:
+      force_sync:
+        description: 'Force sync all branches'
+        type: boolean
+        default: false
+        required: false
+      public_repo_name:
+        description: 'Public repository name (leave empty to auto-derive by removing "-private")'
+        type: string
+        required: false
+      branch_to_sync:
+        description: 'Specific branch to sync (leave empty to sync all branches)'
+        type: string
+        required: false
+        default: ''
+    secrets:
+      SSH_DEPLOY_KEY:
+        required: true
+
+jobs:
+  sync-to-public:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          # Fetch all branches and tags
+          fetch-tags: true
+          ref: ${{ inputs.branch_to_sync || github.ref }}
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+      - name: Determine public repo name
+        id: repo-name
+        run: |
+          # Extract owner/repo from github.repository
+          if [[ -z "${{ inputs.public_repo_name }}" ]]; then
+            PRIVATE_REPO="${{ github.repository }}"
+            # Remove "-private" suffix if present, otherwise just use the same name
+            PUBLIC_REPO="${PRIVATE_REPO%-private}"
+            echo "PUBLIC_REPO=${PUBLIC_REPO}" >> $GITHUB_ENV
+            echo "public_repo=${PUBLIC_REPO}" >> $GITHUB_OUTPUT
+          else
+            # Use the provided public repo name
+            PUBLIC_REPO="${{ inputs.public_repo_name }}"
+            echo "PUBLIC_REPO=${PUBLIC_REPO}" >> $GITHUB_ENV
+            echo "public_repo=${PUBLIC_REPO}" >> $GITHUB_OUTPUT
+          fi
+          echo "Using public repo: ${PUBLIC_REPO}"
+
+      - name: Add public repo remote
+        run: |
+          git remote add public "git@github.com:${PUBLIC_REPO}.git"
+          git remote -v
+
+      - name: Sync specific branch
+        if: inputs.branch_to_sync != ''
+        run: |
+          BRANCH="${{ inputs.branch_to_sync }}"
+          echo "Syncing only branch: ${BRANCH}"
+          
+          # Make sure we're on the branch to sync
+          git checkout "${BRANCH}"
+          
+          # Fetch from public repo to see if branch exists
+          git fetch public "${BRANCH}" || echo "Branch does not exist in public repo yet"
+          
+          # Force push to public repo
+          if [[ "${{ inputs.force_sync }}" == "true" ]]; then
+            echo "Force pushing ${BRANCH} to public repository"
+            git push -f public "${BRANCH}:${BRANCH}"
+          else
+            echo "Pushing ${BRANCH} to public repository"
+            git push public "${BRANCH}:${BRANCH}"
+          fi
+          
+          echo "Successfully synced branch ${BRANCH} to public repository"
+
+      - name: Sync all branches
+        if: inputs.branch_to_sync == ''
+        run: |
+          echo "Syncing all branches to public repository"
+          
+          # Get list of all branches
+          BRANCHES=$(git branch -r | grep -v '\->' | sed 's/origin\///' | grep -v 'HEAD')
+          
+          # Push each branch to public repo
+          for BRANCH in $BRANCHES; do
+            echo "Processing branch: ${BRANCH}"
+            git checkout "${BRANCH}"
+            
+            # Try to fetch from public repo to see if branch exists
+            git fetch public "${BRANCH}" || echo "Branch does not exist in public repo yet"
+            
+            # Force push to public repo if force_sync is true
+            if [[ "${{ inputs.force_sync }}" == "true" ]]; then
+              echo "Force pushing ${BRANCH} to public repository"
+              git push -f public "${BRANCH}:${BRANCH}"
+            else
+              echo "Pushing ${BRANCH} to public repository"
+              git push public "${BRANCH}:${BRANCH}"
+            fi
+          done
+          
+          echo "Successfully synced all branches to public repository"
+
+      - name: Sync tags
+        run: |
+          echo "Syncing tags to public repository"
+          git fetch --tags
+          
+          if [[ "${{ inputs.force_sync }}" == "true" ]]; then
+            echo "Force pushing all tags to public repository"
+            git push -f public --tags
+          else
+            echo "Pushing all tags to public repository"
+            git push public --tags
+          fi
+          
+          echo "Successfully synced tags to public repository"
