@@ -53,8 +53,8 @@ jobs:
       SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
 EOF
 
-# Base64 encode the workflow file content
-ENCODED_CONTENT=$(base64 -w 0 "$WORKFLOW_FILE")
+# Use the cat command to pipe the content directly to base64
+ENCODED_CONTENT=$(cat "$WORKFLOW_FILE" | base64)
 
 echo "Encoded workflow content:"
 echo "$ENCODED_CONTENT"
