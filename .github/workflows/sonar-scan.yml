@@ -1,12 +1,14 @@
 name: Sonar Scan
 
 on:
-  push:
-    branches:
-      - '**'
-      - '*'
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_HOST_URL:
+        required: true
+      SONAR_PROJECTKEY:
+        required: true
 
 jobs:
   build:

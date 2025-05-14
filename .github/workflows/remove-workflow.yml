@@ -6,7 +6,7 @@ on:
       workflow_path:
         description: 'Path to the workflow file to remove (relative to .github/workflows/)'
         required: true
-        default: 'sync-to-public-mirror.yml'
+        default: 'workflow.yml'
       skip_branches:
         description: 'Comma-separated list of branches to skip (optional)'
         required: false

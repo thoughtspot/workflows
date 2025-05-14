@@ -1,11 +1,12 @@
-name: Trigger Jenkins Pipeline
+name: Jenkins Pipeline Trigger
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
+    secrets:
+      JENKINS_USER:
+        required: true
+      JENKINS_TOKEN:
+        required: true
 
 jobs:
   trigger-jenkins:
