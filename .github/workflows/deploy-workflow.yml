@@ -6,7 +6,7 @@ on:
       workflow_path:
         description: 'Path to the workflow file to deploy (relative to .github/workflows/)'
         required: true
-        default: 'sync-to-public-mirror.yml'
+        default: 'workflow.yml'
       workflow_content:
         description: 'Content of the workflow file (base64 encoded)'
         required: true
