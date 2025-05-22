@@ -18,7 +18,13 @@ on:
 
 jobs:
   sync:
+    # Job-level concurrency control - prevents multiple sync jobs from running simultaneously
+    concurrency:
+      group: sync-branches-${{ github.repository }}
+      cancel-in-progress: false  # Queue to ensure all changes are processed
+    
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -136,7 +142,7 @@ jobs:
             # Commit changes
             git add --all
             # Only commit if there are changes
-            git diff --staged --quiet || git commit -m "Update from source repository"
+            git diff --staged --quiet || git commit -m "Update from source repository (workflow run: ${{ github.run_id }})"
             
             # Go back to the private repo directory
             cd $GITHUB_WORKSPACE
@@ -150,9 +156,33 @@ jobs:
           cd ~/public-mirror
           BRANCHES="${{ steps.get-branches.outputs.branches }}"
           
+          echo "Starting push operations for all branches..."
+          
           # Push all branches to public mirror
           for branch in $BRANCHES; do
             echo "Pushing branch: $branch"
             git checkout "$branch" || git checkout -b "$branch"
-            git push -u public "$branch"
+            
+            # Retry logic for push operations to handle transient failures
+            max_retries=3
+            retry_count=0
+            
+            while [ $retry_count -lt $max_retries ]; do
+              if git push -u public "$branch"; then
+                echo "Successfully pushed $branch"
+                break
+              else
+                retry_count=$((retry_count + 1))
+                echo "Push failed for $branch, attempt $retry_count of $max_retries"
+                if [ $retry_count -lt $max_retries ]; then
+                  echo "Waiting 5 seconds before retry..."
+                  sleep 5
+                else
+                  echo "::error::Failed to push $branch after $max_retries attempts"
+                  exit 1
+                fi
+              fi
+            done
           done
+          
+          echo "All branches successfully pushed to public mirror"

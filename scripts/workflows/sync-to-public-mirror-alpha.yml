@@ -1,10 +1,16 @@
 name: Sync Repository to Public Mirror
 
+# Workflow-level concurrency control - prevents multiple instances of this workflow
+concurrency:
+  group: sync-public-mirror-${{ github.repository }}
+  cancel-in-progress: false  # Queue instead of canceling to ensure all changes are synced
+
 on:
   pull_request:
     types: [closed]
+    # No branches filter means it will trigger for ALL branches
   repository_dispatch:
-    types: [sync-public-mirror]
+    types: [sync-public-mirror]  # Custom event from fork PR handler
   workflow_dispatch:
     inputs:
       force_sync:
@@ -19,6 +25,7 @@ on:
 
 jobs:
   call-sync-workflow:
+    # Only run this job when the PR was merged, not just closed, OR when manually triggered, OR via repository_dispatch
     if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     uses: thoughtspot/workflows/.github/workflows/sync-to-public-mirror.yml@main
     with:
