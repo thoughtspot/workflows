@@ -10,7 +10,7 @@ on:
     types: [closed]
     # No branches filter means it will trigger for ALL branches
   repository_dispatch:
-    types: [sync-public-mirror]  # Custom event from fork PR handler
+    types: [sync-public-mirror, sync-after-workflow-deployment] # Custom event from fork PR handler
   workflow_dispatch:
     inputs:
       force_sync:
