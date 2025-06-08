@@ -31,5 +31,10 @@ jobs:
     with:
       force_sync: ${{ github.event.inputs.force_sync == 'true' || github.event_name == 'repository_dispatch' }}
       public_repo_name: ${{ github.event.inputs.public_repo_name || github.event.client_payload.public_repo_name || '' }}
+      # Enhanced context for better logging and traceability
+      trigger_type: ${{ github.event_name }}
+      pr_number: ${{ github.event.pull_request.number || github.event.client_payload.pr_number || '' }}
+      merged_branch: ${{ github.event.pull_request.head.ref || github.event.client_payload.branch || '' }}
+      merge_commit_sha: ${{ github.event.pull_request.merge_commit_sha || github.event.client_payload.commit_sha || github.sha }}
     secrets:
       SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}

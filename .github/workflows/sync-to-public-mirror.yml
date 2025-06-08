@@ -12,22 +12,49 @@ on:
         description: 'Public repository name'
         required: false
         type: string
+      trigger_type:
+        description: 'Type of trigger (pull_request or workflow_dispatch)'
+        required: false
+        default: 'unknown'
+        type: string
+      pr_number:
+        description: 'PR number if triggered by PR merge'
+        required: false
+        default: ''
+        type: string
+      merged_branch:
+        description: 'Branch that was merged'
+        required: false
+        default: ''
+        type: string
+      merge_commit_sha:
+        description: 'Merge commit SHA'
+        required: false
+        default: ''
+        type: string
     secrets:
       SSH_DEPLOY_KEY:
         required: true
 
 jobs:
   sync:
-    # Job-level concurrency control - prevents multiple sync jobs from running simultaneously
-    concurrency:
-      group: sync-branches-${{ github.repository }}
-      cancel-in-progress: false  # Queue to ensure all changes are processed
-    
+    # Removed job-level concurrency control - now handled at workflow level
     runs-on: ubuntu-latest
     
     steps:
+      - name: Log Sync Operation Start
+        run: |
+          echo "::notice::Starting sync operation"
+          echo "Trigger Type: ${{ inputs.trigger_type }}"
+          echo "PR Number: ${{ inputs.pr_number }}"
+          echo "Merged Branch: ${{ inputs.merged_branch }}"
+          echo "Merge Commit SHA: ${{ inputs.merge_commit_sha }}"
+          echo "Workflow Run ID: ${{ github.run_id }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+      
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Get all branches
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -53,12 +80,12 @@ jobs:
           fi
           echo "public_repo=$PUBLIC_REPO" >> $GITHUB_OUTPUT
           
-          echo "Source repository: $PRIVATE_REPO"
-          echo "Target repository: $PUBLIC_REPO"
-          echo "Organization: $ORG"
+          echo "::notice::Source repository: $PRIVATE_REPO"
+          echo "::notice::Target repository: $PUBLIC_REPO"
+          echo "::notice::Organization: $ORG"
       
       - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
           
@@ -69,8 +96,8 @@ jobs:
           
       - name: Set Git identity
         run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action Sync Bot"
+          git config --global user.email "action+sync@github.com"
           
       - name: Get all branch names
         id: get-branches
@@ -78,7 +105,7 @@ jobs:
           # Get all branches and remove the refs/heads/ prefix
           BRANCHES=$(git branch -r | grep -v '\->' | sed 's/origin\///g' | tr '\n' ' ')
           echo "branches=$BRANCHES" >> $GITHUB_OUTPUT
-          echo "Found branches: $BRANCHES"
+          echo "::notice::Found branches: $BRANCHES"
 
       - name: Create workspace for public mirror
         run: |
@@ -89,100 +116,199 @@ jobs:
           git init
           
           # Set Git identity in public repo directory
-          git config user.name "GitHub Action"
-          git config user.email "action@github.com"
+          git config user.name "GitHub Action Sync Bot"
+          git config user.email "action+sync@github.com"
           
           # Set up remote for the public mirror using SSH
           git remote add public git@github.com:${{ steps.repo-names.outputs.org }}/${{ steps.repo-names.outputs.public_repo }}.git
           
           # Check if public repo exists by attempting to connect to it
+          echo "::notice::Verifying access to public repository..."
           if ! git ls-remote public HEAD &>/dev/null; then
             echo "::error::Public repository doesn't exist or can't be accessed: ${{ steps.repo-names.outputs.org }}/${{ steps.repo-names.outputs.public_repo }}"
-            echo "Ensure the repository exists and the SSH key has appropriate access."
+            echo "::error::Ensure the repository exists and the SSH key has appropriate access."
             exit 1
           fi
           
           # Try to fetch from public repository
-          git fetch public || echo "Could not fetch from public repository, but continuing anyway."
+          echo "::notice::Fetching from public repository..."
+          git fetch public || echo "::warning::Could not fetch from public repository, but continuing anyway."
 
       - name: Create and update all branches
+        continue-on-error: false
         run: |
           BRANCHES="${{ steps.get-branches.outputs.branches }}"
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          FAILED_BRANCHES=()
+          SUCCESSFUL_BRANCHES=()
           
-          echo "Processing branches: $BRANCHES"
+          echo "::notice::Processing branches: $BRANCHES"
           
           # Process each branch
           for branch in $BRANCHES; do
-            echo "Processing branch: $branch"
+            echo "::group::Processing branch: $branch"
             
-            # Checkout the branch from private repo with explicit ref specification
-            # Use '--' to disambiguate between files and branch names
-            git checkout "refs/remotes/origin/$branch" -B "$branch" --
+            # Initialize branch processing with error handling
+            if ! (
+              # Checkout the branch from private repo with explicit ref specification
+              echo "Checking out branch: $branch"
+              git checkout "refs/remotes/origin/$branch" -B "$branch" -- || {
+                echo "::error::Failed to checkout branch: $branch"
+                exit 1
+              }
 
-            # Create temporary directory for the branch content
-            rm -rf /tmp/repo-content
-            mkdir -p /tmp/repo-content
+              # Create temporary directory for the branch content
+              rm -rf /tmp/repo-content
+              mkdir -p /tmp/repo-content
+              
+              # Copy all files except .git directory
+              rsync -av --exclude='.git' ./ /tmp/repo-content/ || {
+                echo "::error::Failed to copy content for branch: $branch"
+                exit 1
+              }
+              
+              # Switch to public mirror workspace
+              cd ~/public-mirror
+              
+              # Try to checkout the branch if it exists in public mirror
+              git checkout "$branch" 2>/dev/null || git checkout -b "$branch" || {
+                echo "::error::Failed to checkout/create branch in public mirror: $branch"
+                exit 1
+              }
+              
+              # Remove all content except .git directory
+              find . -mindepth 1 -not -path "./.git*" -delete
+              
+              # Copy content from private repo
+              rsync -av /tmp/repo-content/ ./ || {
+                echo "::error::Failed to copy content to public mirror for branch: $branch"
+                exit 1
+              }
+              
+              # Commit changes
+              git add --all
+              # Only commit if there are changes
+              if git diff --staged --quiet; then
+                echo "No changes detected for branch: $branch"
+              else
+                COMMIT_MSG="Update from source repository"
+                COMMIT_MSG="$COMMIT_MSG (workflow run: ${{ github.run_id }})"
+                if [[ -n "${{ inputs.pr_number }}" ]]; then
+                  COMMIT_MSG="$COMMIT_MSG (PR #${{ inputs.pr_number }})"
+                fi
+                if [[ -n "${{ inputs.merge_commit_sha }}" ]]; then
+                  COMMIT_MSG="$COMMIT_MSG (commit: ${{ inputs.merge_commit_sha }})"
+                fi
+                
+                git commit -m "$COMMIT_MSG" || {
+                  echo "::error::Failed to commit changes for branch: $branch"
+                  exit 1
+                }
+                echo "Committed changes for branch: $branch"
+              fi
+              
+              # Go back to the private repo directory
+              cd $GITHUB_WORKSPACE
+            ); then
+              echo "::error::Failed to process branch: $branch"
+              FAILED_BRANCHES+=("$branch")
+            else
+              echo "::notice::Successfully processed branch: $branch"
+              SUCCESSFUL_BRANCHES+=("$branch")
+            fi
             
-            # Copy all files except .git directory
-            rsync -av --exclude='.git' ./ /tmp/repo-content/
-            
-            # Switch to public mirror workspace
-            cd ~/public-mirror
-            
-            # Try to checkout the branch if it exists in public mirror
-            git checkout "$branch" 2>/dev/null || git checkout -b "$branch"
-            
-            # Remove all content except .git directory
-            find . -mindepth 1 -not -path "./.git*" -delete
-            
-            # Copy content from private repo
-            rsync -av /tmp/repo-content/ ./
-            
-            # Commit changes
-            git add --all
-            # Only commit if there are changes
-            git diff --staged --quiet || git commit -m "Update from source repository (workflow run: ${{ github.run_id }})"
-            
-            # Go back to the private repo directory
-            cd $GITHUB_WORKSPACE
+            echo "::endgroup::"
           done
           
           # Return to the original branch
           git checkout "$CURRENT_BRANCH" || true
+          
+          # Log results
+          if [ ${#SUCCESSFUL_BRANCHES[@]} -gt 0 ]; then
+            echo "::notice::Successfully processed branches: ${SUCCESSFUL_BRANCHES[*]}"
+          fi
+          
+          if [ ${#FAILED_BRANCHES[@]} -gt 0 ]; then
+            echo "::warning::Failed to process branches: ${FAILED_BRANCHES[*]}"
+            echo "failed_branches=${FAILED_BRANCHES[*]}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Push all branches to public mirror
+        continue-on-error: false
         run: |
           cd ~/public-mirror
           BRANCHES="${{ steps.get-branches.outputs.branches }}"
+          FAILED_PUSHES=()
+          SUCCESSFUL_PUSHES=()
           
-          echo "Starting push operations for all branches..."
+          echo "::notice::Starting push operations for all branches..."
           
           # Push all branches to public mirror
           for branch in $BRANCHES; do
-            echo "Pushing branch: $branch"
-            git checkout "$branch" || git checkout -b "$branch"
+            echo "::group::Pushing branch: $branch"
             
-            # Retry logic for push operations to handle transient failures
-            max_retries=3
-            retry_count=0
-            
-            while [ $retry_count -lt $max_retries ]; do
-              if git push -u public "$branch"; then
-                echo "Successfully pushed $branch"
-                break
-              else
-                retry_count=$((retry_count + 1))
-                echo "Push failed for $branch, attempt $retry_count of $max_retries"
-                if [ $retry_count -lt $max_retries ]; then
-                  echo "Waiting 5 seconds before retry..."
-                  sleep 5
+            if ! (
+              git checkout "$branch" || git checkout -b "$branch" || {
+                echo "::error::Failed to checkout branch for push: $branch"
+                exit 1
+              }
+              
+              # Retry logic for push operations to handle transient failures
+              max_retries=3
+              retry_count=0
+              
+              while [ $retry_count -lt $max_retries ]; do
+                if git push -u public "$branch" 2>&1; then
+                  echo "::notice::Successfully pushed $branch"
+                  break
                 else
-                  echo "::error::Failed to push $branch after $max_retries attempts"
-                  exit 1
+                  retry_count=$((retry_count + 1))
+                  echo "::warning::Push failed for $branch, attempt $retry_count of $max_retries"
+                  if [ $retry_count -lt $max_retries ]; then
+                    echo "Waiting 5 seconds before retry..."
+                    sleep 5
+                  else
+                    echo "::error::Failed to push $branch after $max_retries attempts"
+                    exit 1
+                  fi
                 fi
-              fi
-            done
+              done
+            ); then
+              echo "::error::Failed to push branch: $branch"
+              FAILED_PUSHES+=("$branch")
+            else
+              SUCCESSFUL_PUSHES+=("$branch")
+            fi
+            
+            echo "::endgroup::"
           done
           
-          echo "All branches successfully pushed to public mirror"
+          # Log final results
+          if [ ${#SUCCESSFUL_PUSHES[@]} -gt 0 ]; then
+            echo "::notice::Successfully pushed branches: ${SUCCESSFUL_PUSHES[*]}"
+          fi
+          
+          if [ ${#FAILED_PUSHES[@]} -gt 0 ]; then
+            echo "::error::Failed to push branches: ${FAILED_PUSHES[*]}"
+            echo "::error::Some branches failed to sync. Please check the logs above for details."
+            # Don't exit 1 here to allow subsequent queued workflows to continue
+            echo "failed_pushes=${FAILED_PUSHES[*]}" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::All branches successfully pushed to public mirror"
+          fi
+
+      - name: Log Sync Operation Complete
+        if: always()
+        run: |
+          echo "::notice::Sync operation completed"
+          echo "Workflow Run ID: ${{ github.run_id }}"
+          echo "End Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          
+          # Log summary based on job outcomes
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "::notice::✅ Sync completed successfully"
+          elif [[ "${{ job.status }}" == "failure" ]]; then
+            echo "::error::❌ Sync completed with failures"
+          else
+            echo "::warning::⚠️ Sync completed with status: ${{ job.status }}"
+          fi
