@@ -39,12 +39,7 @@ jobs:
       public_repo_name: ${{ github.event.inputs.public_repo_name || github.event.client_payload.public_repo_name || '' }}
       
       # Target branch optimization: Use specific branches instead of syncing all
-      target_branches: ${{ 
-        github.event.inputs.target_branches || 
-        github.event.client_payload.target_branches || 
-        (github.event_name == 'pull_request' && github.event.pull_request.base.ref) || 
-        '' 
-      }}
+      target_branches: ${{ github.event.inputs.target_branches || github.event.client_payload.target_branches || (github.event_name == 'pull_request' && github.event.pull_request.base.ref) || '' }}
       
       # Enhanced context for better logging and traceability
       trigger_type: ${{ github.event_name }}
