@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [encode|decode] <file-path>"
+  echo "Usage: $0 [--encode|-e | --decode|-d] <file-path>"
   exit 1
 }
 
@@ -11,7 +11,21 @@ if [ "$#" -ne 2 ]; then
   usage
 fi
 
-MODE="$1"
+MODE=""
+FILE=""
+
+case "$1" in
+  --encode|-e)
+    MODE="encode"
+    ;;
+  --decode|-d)
+    MODE="decode"
+    ;;
+  *)
+    usage
+    ;;
+esac
+
 FILE="$2"
 
 if [ ! -f "$FILE" ]; then
@@ -19,7 +33,6 @@ if [ ! -f "$FILE" ]; then
   exit 1
 fi
 
-# Extract filename without path and extension
 FILENAME_BASE="$(basename "$FILE")"
 FILENAME_NOEXT="${FILENAME_BASE%.*}"
 ENCODED_FILE="${FILENAME_NOEXT}-b64-encoded.txt"
@@ -29,19 +42,15 @@ if [[ "$OS" == "Darwin" ]]; then
   if [[ "$MODE" == "encode" ]]; then
     base64 -i "$FILE" > "$ENCODED_FILE"
     echo "Encoded file created: $ENCODED_FILE"
-  elif [[ "$MODE" == "decode" ]]; then
-    base64 -d -i "$FILE"
   else
-    usage
+    base64 -d -i "$FILE"
   fi
 elif [[ "$OS" == "Linux" ]]; then
   if [[ "$MODE" == "encode" ]]; then
     base64 "$FILE" > "$ENCODED_FILE"
     echo "Encoded file created: $ENCODED_FILE"
-  elif [[ "$MODE" == "decode" ]]; then
-    base64 -d "$FILE"
   else
-    usage
+    base64 -d "$FILE"
   fi
 else
   echo "Unsupported platform: $OS"
