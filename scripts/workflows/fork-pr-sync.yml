@@ -1,8 +1,8 @@
 name: Handle Fork PR Sync
 
-# Concurrency control for fork PR handling
+# Branch-level concurrency control for fork PR handling
 concurrency:
-  group: fork-pr-sync-${{ github.repository }}
+  group: fork-pr-sync-${{ github.repository }}-${{ github.event.pull_request.base.ref }}
   cancel-in-progress: false
 
 on:

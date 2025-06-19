@@ -1,9 +1,9 @@
 name: Sync Repository to Public Mirror
 
-# Workflow-level concurrency control - prevents multiple instances of this workflow
+# Branch-level concurrency control - allows parallel syncs for different branches
 concurrency:
-  group: sync-public-mirror-${{ github.repository }}
-  cancel-in-progress: false  # Queue instead of canceling to ensure all changes are synced
+  group: sync-public-mirror-${{ github.repository }}-${{ github.event.pull_request.base.ref || github.event.client_payload.branch || github.event.inputs.target_branches || 'default' }}
+  cancel-in-progress: false  # Queue per branch to ensure all changes are synced
 
 on:
   pull_request:
