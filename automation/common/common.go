@@ -1,17 +1,25 @@
 package common
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"automation/constants"
+	"automation/logger"
+
+	"golang.org/x/crypto/nacl/box"
 )
 
 func SetHeaders(req *http.Request) {
+	fmt.Println(os.Getenv("AUTH_TOKEN"))
 	headers := map[string]string{
 		"accept":              "application/vnd.github+json",
 		"X-GitHub-Api-Versio": "2022-11-28",
@@ -44,9 +52,45 @@ func CreateRepositorySecretEndpointURL(repositoryName string) string {
 }
 
 func RequestBody(data any) io.Reader {
+	l := logger.New()
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
-		panic(err)
+		l.Fatal(err)
 	}
 	return bytes.NewReader(dataBytes)
+}
+
+func EncryptSecret(secretValue string, publicKeyB64 string) string {
+	l := logger.New()
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
+	if err != nil {
+		l.Fatal(err)
+	}
+
+	if len(publicKeyBytes) != 32 {
+		l.Fatal(err)
+	}
+
+	var publicKey [32]byte
+	copy(publicKey[:], publicKeyBytes)
+
+	secretBytes := []byte(secretValue)
+	encrypted, err := box.SealAnonymous(nil, secretBytes, &publicKey, rand.Reader)
+	if err != nil {
+		l.Fatal(err)
+	}
+
+	return base64.StdEncoding.EncodeToString(encrypted)
+}
+
+func Prompt(question, message string) string {
+	l := logger.New()
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(message)
+	fmt.Print(question + ": ")
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		l.Fatal(err)
+	}
+	return strings.TrimSpace(answer)
 }

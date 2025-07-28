@@ -1,12 +1,12 @@
 package repo
 
 import (
-	"fmt"
-	"io"
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"automation/common"
+	"automation/logger"
 )
 
 type Repository struct {
@@ -16,10 +16,25 @@ type Repository struct {
 	Org                 string `json:"org"`
 }
 
+func New(name, visibility, org string, deleteBranchOnMerge bool) *Repository {
+	return &Repository{
+		Name:                name,
+		Visibility:          visibility,
+		DeleteBranchOnMerge: deleteBranchOnMerge,
+		Org:                 org,
+	}
+}
+
+type CreateRepoResponse struct {
+	Name string `json:"name"`
+	URL  string `json:"html_url"`
+}
+
 func (r *Repository) CreateRepo() {
+	l := logger.New()
 	req, err := http.NewRequest(http.MethodPost, common.CreateRepositoryEndpointURL(), common.RequestBody(r))
 	if err != nil {
-		panic(err)
+		l.Fatal(err)
 	}
 
 	common.SetHeaders(req)
@@ -29,14 +44,15 @@ func (r *Repository) CreateRepo() {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		l.Fatal(err)
 	}
 	defer resp.Body.Close()
 
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
+	var createRepoResponse CreateRepoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&createRepoResponse); err != nil {
+		l.Fatal(err)
 	}
 
-	fmt.Println(string(bytes))
+	l.Println(resp.StatusCode)
+	l.Println(createRepoResponse)
 }

@@ -1,12 +1,12 @@
 package deploykey
 
 import (
-	"fmt"
-	"io"
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"automation/common"
+	"automation/logger"
 )
 
 type DeployKey struct {
@@ -16,7 +16,26 @@ type DeployKey struct {
 	RepositoryName string `json:"repository_name"`
 }
 
+func New(key, title, repositoryName string, readOnly bool) *DeployKey {
+	return &DeployKey{
+		Key:            key,
+		Title:          title,
+		ReadOnly:       readOnly,
+		RepositoryName: repositoryName,
+	}
+}
+
+type CreateDeloyKeysResponse struct {
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Verified bool   `json:"verified"`
+	ReadOnly bool   `json:"read_only"`
+	AddedBy  string `json:"added_by"`
+	Enabled  bool   `json:"enabled"`
+}
+
 func (d *DeployKey) CreateDeployKey() {
+	l := logger.New()
 	reqBody := struct {
 		Key      string `json:"key"`
 		Title    string `json:"title"`
@@ -29,7 +48,7 @@ func (d *DeployKey) CreateDeployKey() {
 
 	req, err := http.NewRequest(http.MethodPost, common.CreateDeployKeyEndpointURL(d.RepositoryName), common.RequestBody(reqBody))
 	if err != nil {
-		panic(err)
+		l.Fatal(err)
 	}
 
 	common.SetHeaders(req)
@@ -40,13 +59,15 @@ func (d *DeployKey) CreateDeployKey() {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		l.Fatal(err)
 	}
 	defer resp.Body.Close()
 
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
+	var createDeployKeyResponse CreateDeloyKeysResponse
+	if err := json.NewDecoder(resp.Body).Decode(&createDeployKeyResponse); err != nil {
+		l.Fatal(err)
 	}
-	fmt.Println(string(bytes))
+
+	l.Println(resp.StatusCode)
+	l.Println(createDeployKeyResponse)
 }
