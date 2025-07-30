@@ -41,9 +41,9 @@ func CreateRepositoryEndpointURL() string {
 	return fmt.Sprintf("https://api.github.com/orgs/%s/repos", constants.ORGANIZATION)
 }
 
-func GetOrgPublicKeyEndpointURL() string {
-	// https://api.github.com/orgs/ORG/actions/secrets/public-key
-	return fmt.Sprintf("https://api.github.com/orgs/%s/actions/secrets/public-key", constants.ORGANIZATION)
+func GetRepoPublicKeyEndpointURL(repositoryName string) string {
+	// https://api.github.com/repos/OWNER/REPO/actions/secrets/public-key
+	return fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/secrets/public-key", constants.ORGANIZATION, repositoryName)
 }
 
 func CreateRepositorySecretEndpointURL(repositoryName string) string {
@@ -60,7 +60,7 @@ func RequestBody(data any) io.Reader {
 	return bytes.NewReader(dataBytes)
 }
 
-func EncryptSecret(secretValue string, publicKeyB64 string) string {
+func EncryptSecret(secretValue []byte, publicKeyB64 string) string {
 	l := logger.New()
 	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
 	if err != nil {
@@ -68,19 +68,18 @@ func EncryptSecret(secretValue string, publicKeyB64 string) string {
 	}
 
 	if len(publicKeyBytes) != 32 {
-		l.Fatal(err)
+		l.Fatalf("wrong length of public key %d\n", len(publicKeyBytes))
 	}
 
 	var publicKey [32]byte
 	copy(publicKey[:], publicKeyBytes)
 
-	secretBytes := []byte(secretValue)
-	encrypted, err := box.SealAnonymous(nil, secretBytes, &publicKey, rand.Reader)
+	encryptedSecret, err := box.SealAnonymous(nil, secretValue, &publicKey, rand.Reader)
 	if err != nil {
 		l.Fatal(err)
 	}
 
-	return base64.StdEncoding.EncodeToString(encrypted)
+	return base64.StdEncoding.EncodeToString(encryptedSecret)
 }
 
 func Prompt(question, message string) string {

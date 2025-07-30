@@ -1,17 +1,25 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"automation/common"
+	"automation/constants"
+	"automation/deploykey"
 	"automation/logger"
-	"automation/orgpublickey"
+	"automation/repo"
+	"automation/sshkeys"
 )
 
 type UserInput struct {
+	/*
+		The AuthToken must have the following permissions:
+		1. "Administration" repository permissions (write)
+		2. "Secrets" organization permissions (read)
+		3. "Secrets" repository permissions (write)
+	*/
 	AuthToken             string `json:"auth_token"`
 	PrivateRepositoryName string `json:"private_repository_name"`
 	PublicRepositoryName  string `json:"public_repository_name"`
@@ -45,11 +53,6 @@ func main() {
 				input.PublicRepositoryName = strings.TrimSuffix(repositoryName, "-private")
 			},
 		},
-		// {
-		// 	Question: "Review the following and confirm to proceed(Y/n)",
-		// 	Message:  fmt.Sprintf("\nThe following will be created:\nPrivate Repository: %s\nPublic Repository: %s\n\n", input.RepositoryName, strings.TrimSuffix(input.RepositoryName, "-private")),
-		// 	Fn:       func(string) {},
-		// },
 	}
 
 	for _, q := range qs {
@@ -61,34 +64,32 @@ func main() {
 
 	input.Proceed = common.Prompt("Review the following and confirm to proceed(Y/n)", message)
 
-	if input.Proceed == "Y" || input.Proceed == "" || input.Proceed == "y" {
-		// r := repo.New(input.PrivateRepositoryName, constants.PRIVATE_VISIBILITY, constants.ORGANIZATION, true)
-		// fmt.Println(r)
-		// r.CreateRepo()
-		//
-		// r = repo.New(input.PublicRepositoryName, constants.PUBLIC_VISIBILITY, constants.ORGANIZATION, true)
-		// fmt.Println(r)
-		// r.CreateRepo()
-		//
-		// opensshKeys := sshkeys.GenerateED25519Keys()
-		//
-		// d := deploykey.New(string(opensshKeys.PublicKey), input.PrivateRepositoryName, input.PublicRepositoryName, false)
-		// fmt.Println(d)
-		// d.CreateDeployKey()
+	Run(input)
+}
 
-		orgPubKey := orgpublickey.GetOrgPublicKey()
-		l.Println(orgPubKey)
-		// orgPubKeyB64Encoded := base64.StdEncoding.EncodeToString([]byte(orgPubKey.Key))
-		// encryptedSecert := common.EncryptSecret(string(opensshKeys.PrivateKey), orgPubKeyB64Encoded)
-		//
-		// rs := reposecret.New(input.PrivateRepositoryName, constants.SECRET_NAME, encryptedSecert, orgPubKey.KeyID)
-		// fmt.Println(rs)
-		// rs.CreateRepositorySecret()
-	}
+func Run(input UserInput) {
+	l := logger.New()
+	switch input.Proceed {
+	case "Y", "y", "":
+		r := repo.NewRepository(input.PrivateRepositoryName, constants.PRIVATE_VISIBILITY, constants.ORGANIZATION, true)
+		r.Create()
 
-	bytes, err := json.MarshalIndent(input, "", "    ")
-	if err != nil {
-		l.Fatal(err)
+		r = repo.NewRepository(input.PublicRepositoryName, constants.PUBLIC_VISIBILITY, constants.ORGANIZATION, true)
+		r.Create()
+
+		opensshKeys := sshkeys.GenerateED25519Keys()
+
+		d := deploykey.New(string(opensshKeys.PublicKey), input.PrivateRepositoryName, input.PublicRepositoryName, false)
+		d.CreateDeployKey()
+
+		orgPubKey := repo.GetPublicKey(input.PrivateRepositoryName)
+		encryptedSecert := common.EncryptSecret(opensshKeys.PrivateKey, orgPubKey.Key)
+
+		rs := repo.NewRepositorySecret(input.PrivateRepositoryName, constants.SECRET_NAME, encryptedSecert, orgPubKey.KeyID)
+		rs.CreateSecret()
+	case "N", "n":
+		fmt.Println("Not proceeding...!")
+	default:
+		l.Fatal("Invalid input! Exiting...")
 	}
-	l.Println(string(bytes))
 }

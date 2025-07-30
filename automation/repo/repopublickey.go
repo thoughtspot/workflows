@@ -1,4 +1,4 @@
-package orgpublickey
+package repo
 
 import (
 	"encoding/json"
@@ -15,9 +15,9 @@ type OrgPublicKey struct {
 	Key   string `json:"key"`
 }
 
-func GetOrgPublicKey() OrgPublicKey {
+func GetPublicKey(repositoryName string) OrgPublicKey {
 	l := logger.New()
-	req, err := http.NewRequest(http.MethodGet, common.GetOrgPublicKeyEndpointURL(), nil)
+	req, err := http.NewRequest(http.MethodGet, common.GetRepoPublicKeyEndpointURL(repositoryName), nil)
 	if err != nil {
 		l.Fatal(err)
 	}

@@ -16,7 +16,7 @@ type Repository struct {
 	Org                 string `json:"org"`
 }
 
-func New(name, visibility, org string, deleteBranchOnMerge bool) *Repository {
+func NewRepository(name, visibility, org string, deleteBranchOnMerge bool) *Repository {
 	return &Repository{
 		Name:                name,
 		Visibility:          visibility,
@@ -30,7 +30,7 @@ type CreateRepoResponse struct {
 	URL  string `json:"html_url"`
 }
 
-func (r *Repository) CreateRepo() {
+func (r *Repository) Create() {
 	l := logger.New()
 	req, err := http.NewRequest(http.MethodPost, common.CreateRepositoryEndpointURL(), common.RequestBody(r))
 	if err != nil {
