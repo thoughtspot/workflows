@@ -1,8 +1,6 @@
 package repo
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"time"
 
@@ -36,19 +34,6 @@ func (r *RepositorySecret) CreateSecret() {
 		KeyID:           r.KeyID,
 	}
 
-	type RequestBody struct {
-		EncryptedSecret string `json:"encrypted_value"`
-		KeyID           string `json:"key_id"`
-	}
-
-	var reqBody RequestBody
-	reader := common.RequestBody(bodyData)
-	data, _ := io.ReadAll(reader)
-	if err := json.Unmarshal(data, &reqBody); err != nil {
-		l.Fatal(err)
-	}
-	l.Println(reqBody)
-
 	req, err := http.NewRequest(http.MethodPut, common.CreateRepositorySecretEndpointURL(r.RepositoryName), common.RequestBody(bodyData))
 	if err != nil {
 		l.Fatal(err)
@@ -66,5 +51,6 @@ func (r *RepositorySecret) CreateSecret() {
 	}
 	defer resp.Body.Close()
 
-	l.Println("Repository Secret Successfully")
+	l.Printf("API Response Status Code: %d\n", resp.StatusCode)
+	l.Printf("Repository Secret Successfully\n")
 }

@@ -44,6 +44,6 @@ func GetPublicKey(repositoryName string) OrgPublicKey {
 		l.Fatal(err)
 	}
 
-	l.Println(resp.StatusCode)
+	l.Printf("API Response Status Code: %d\n", resp.StatusCode)
 	return orgPublicKey
 }

@@ -53,6 +53,7 @@ func (r *Repository) Create() {
 		l.Fatal(err)
 	}
 
-	l.Println(resp.StatusCode)
-	l.Println(createRepoResponse)
+	l.Printf("API Response Status Code: %d\n", resp.StatusCode)
+	l.Printf("%s was created successfully\n", createRepoResponse.Name)
+	l.Printf("Link to the repository: %s\n", createRepoResponse.URL)
 }

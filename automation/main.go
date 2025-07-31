@@ -18,7 +18,7 @@ type UserInput struct {
 	/*
 		The AuthToken must have the following permissions:
 		1. "Administration" repository permissions (write)
-		2. "Secrets" organization permissions (read)
+		2. "Secrets" repository permissions (read)
 		3. "Secrets" repository permissions (write)
 	*/
 	AuthToken             string `json:"auth_token"`
@@ -48,8 +48,11 @@ func main() {
 		},
 		{
 			Question: "Private Repository Name",
-			Message:  "",
+			Message:  "Note: The repository name must end with `-private`",
 			Fn: func(repositoryName string) {
+				if !strings.HasSuffix(repositoryName, "-private") {
+					l.Fatalf("private repository's name is missising mandatory suffix(-private): %v", repositoryName)
+				}
 				input.PrivateRepositoryName = repositoryName
 				input.PublicRepositoryName = strings.TrimSuffix(repositoryName, "-private")
 			},

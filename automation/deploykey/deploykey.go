@@ -68,6 +68,11 @@ func (d *DeployKey) CreateDeployKey() {
 		l.Fatal(err)
 	}
 
-	l.Println(resp.StatusCode)
-	l.Println(createDeployKeyResponse)
+	l.Printf("API Response Status Code: %d\n", resp.StatusCode)
+	l.Printf("Deploy Key with Name: %s\n", createDeployKeyResponse.Title)
+	l.Printf("Deploy Key Contents: %s\n", createDeployKeyResponse.Key)
+	l.Printf("Deploy Key ReadOnly: %t\n", createDeployKeyResponse.ReadOnly)
+	l.Printf("Deploy Key verified: %t\n", createDeployKeyResponse.Verified)
+	l.Printf("Deploy Key Enabled: %t\n", createDeployKeyResponse.Enabled)
+	l.Printf("Deploy Key Added By: %s\n", createDeployKeyResponse.AddedBy)
 }
