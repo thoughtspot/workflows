@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-### To run this automation you will a github token with the following permissions
+### To run this automation you will need a GitHub token with the following permissions:
 
 1. "Administration" repository permissions (write)
 2. "Secrets" repository permissions (read)
