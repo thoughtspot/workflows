@@ -9,6 +9,7 @@ import (
 	"automation/constants"
 	"automation/deploykey"
 	"automation/logger"
+	"automation/prompt"
 	"automation/repo"
 	"automation/sshkeys"
 )
@@ -55,14 +56,16 @@ func main() {
 		},
 	}
 
+	rw := prompt.NewRW(os.Stdin, os.Stdout)
+
 	for _, q := range qs {
-		answer := common.Prompt(q.Question, q.Message)
+		answer := rw.Prompt(q.Question, q.Message)
 		q.Fn(answer)
 	}
 
 	message := fmt.Sprintf("\nThe following will be created:\nPrivate Repository: %s\nPublic Repository: %s\n\n", input.PrivateRepositoryName, input.PublicRepositoryName)
 
-	input.Proceed = common.Prompt("Review the following and confirm to proceed(Y/n)", message)
+	input.Proceed = rw.Prompt("Review the following and confirm to proceed(Y/n)", message)
 
 	Run(input)
 }

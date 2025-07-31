@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
@@ -10,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"automation/constants"
 	"automation/logger"
@@ -21,9 +19,9 @@ import (
 func SetHeaders(req *http.Request) {
 	fmt.Println(os.Getenv("AUTH_TOKEN"))
 	headers := map[string]string{
-		"accept":              "application/vnd.github+json",
-		"X-GitHub-Api-Versio": "2022-11-28",
-		"Authorization":       "Bearer " + os.Getenv("AUTH_TOKEN"),
+		"accept":               "application/vnd.github+json",
+		"X-GitHub-Api-Version": "2022-11-28",
+		"Authorization":        "Bearer " + os.Getenv("AUTH_TOKEN"),
 	}
 
 	for k, v := range headers {
@@ -80,16 +78,4 @@ func EncryptSecret(secretValue []byte, publicKeyB64 string) string {
 	}
 
 	return base64.StdEncoding.EncodeToString(encryptedSecret)
-}
-
-func Prompt(question, message string) string {
-	l := logger.New()
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print(message)
-	fmt.Print(question + ": ")
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		l.Fatal(err)
-	}
-	return strings.TrimSpace(answer)
 }
