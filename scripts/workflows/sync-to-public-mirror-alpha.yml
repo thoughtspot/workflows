@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       force_sync:
-        description: 'Force sync all branches (WARNING: This will sync all 180+ branches)'
+        description: 'Force sync all branches (WARNING: This will sync all branches)'
         required: false
         default: false  # Changed default to false for optimization
         type: boolean
