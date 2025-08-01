@@ -43,10 +43,6 @@ on:
 
 jobs:
   sync:
-    # Branch-level concurrency control for reusable workflow
-    concurrency:
-      group: sync-public-mirror-${{ github.repository }}-${{ inputs.force_sync == true && 'full-sync' || inputs.target_branches || inputs.merged_branch || 'default' }}
-      cancel-in-progress: false  # Queue per branch/operation to ensure all changes are synced
     runs-on: ubuntu-latest
     
     steps:
